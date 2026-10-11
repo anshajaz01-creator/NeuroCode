@@ -1,0 +1,6 @@
+rough-not-to-push/
+__pycache__/
+*.pyc
+.cph/
+backend/data/prepared/
+backend/models/*.pt
