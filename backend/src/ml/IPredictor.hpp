@@ -2,12 +2,12 @@
 #include <string>
 #include <vector>
 #include <memory>
-#include "engine/IEngine.hpp" // for AlgorithmGuess (pushed by engine-ansh)
+#include "engine/IEngine.hpp" // for AlgorithmGuess
 
 namespace nc
 {
 
-    // Fixed for the life of the project. Changing it invalidates every checkpoint.
+    // FROZEN. Must match FEATURE_NAMES in tools/features.py and src/ml/features.md.
     constexpr int kFeatureCount = 48;
 
     class IPredictor
@@ -15,7 +15,6 @@ namespace nc
     public:
         virtual ~IPredictor() = default;
 
-        // ast_json and cfg_json come from the engine
         virtual std::vector<float> extractFeatures(const std::string &ast_json,
                                                    const std::string &cfg_json) = 0;
 
