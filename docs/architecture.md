@@ -596,7 +596,7 @@ This finds bugs. It does not prove their absence, and the UI and report say so.
 
 ### 8.1 Task
 
-Multi-class classification: given an AST and CFG, name the algorithm. Roughly 12 to 15 classes, for example brute force pair search, binary search, two pointer, sliding window, BFS, DFS, DP one-dimensional, DP two-dimensional, greedy scan, sorting based, hashing, heap based.
+Multi-class classification: given an AST and CFG, name the algorithm. Roughly 14 classes, for example brute force pair search, binary search, two pointer, sliding window, BFS, DFS, DP one-dimensional, DP two-dimensional, greedy scan, sorting based, hashing, heap based.
 
 One task, done well. Bug detection is handled by the deterministic side.
 
@@ -620,7 +620,7 @@ Hand-crafted features are chosen over token embeddings deliberately: they train 
 Target: 2000 to 4000 labeled samples.
 
 ```
-~150 hand-written reference implementations (12-15 classes)
+~150 hybrid (hand-written + externally imported) reference implementations (12-15 classes)
          │
          ▼
 MutationEngine: identifier renaming, loop restructuring (for/while swap),
