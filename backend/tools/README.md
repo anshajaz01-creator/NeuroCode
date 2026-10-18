@@ -1,72 +1,77 @@
 # ML data tools
 
-Everything here runs offline on your laptop. Nothing in the C++ backend
-makes a network call or shells out to Python.
+Everything here runs offline on your laptop. Nothing in the C++ backend makes a
+network call or shells out to Python. These scripts only produce files the
+backend later reads.
 
 ## Setup
 
-    pip install libclang --break-system-packages
+    python3 -m venv ~/venvs/neurocode
+    source ~/venvs/neurocode/bin/activate
+    pip install -r tools/requirements.txt
 
 `extract_ast.py` points libclang at the system GCC headers, because the pip
 wheel ships no builtin headers and every parse fails with "stddef.h not found".
 If your GCC version differs, check `builtin_includes()`.
 
-## Files
+## Pipeline
 
-| File | Job |
+Run from `backend/`, in this order:
+
+    python3 tools/import_codecontests.py --max-problems 1500   # external samples (needs internet)
+    python3 tools/mutate_seeds.py                              # seeds -> ~20 variants each
+    python3 tools/build_manifest.py                            # merge + split by group
+    python3 tools/build_dataset.py                             # features -> data/dataset.jsonl
+
+| File | Job | Output |
+|---|---|---|
+| `import_codecontests.py` | CodeContests problems with a single algorithm tag -> C++ solutions | `data/external/`, `data/manifest_external.csv` |
+| `mutate_seeds.py` | Hand-written seeds -> label-preserving variants (rename, for->while, increment, dead code) | `data/mutated/`, `data/manifest_seeds.csv` |
+| `build_manifest.py` | Merge manifests, assign train/val/test by group, stratified per label | `data/manifest.csv` |
+| `extract_ast.py` | libclang -> AST JSON, the schema shared with T4's engine | (library) |
+| `features.py` | AST JSON -> 48 floats. Reference impl, mirrored in C++ | (library) |
+| `build_dataset.py` | Manifest -> stripped code -> AST -> features, label filter on external | `data/dataset.jsonl` |
+
+## Labels
+
+12 classes, defined in `src/ml/labels.json` (alphabetical). Folder names under
+`data/seeds/` and the optimizer catalog must use the same strings.
+
+| Source | Labels |
 |---|---|
-| `extract_ast.py` | libclang → AST JSON, the schema shared with T4's engine |
-| `features.py` | AST JSON → 48 floats. Reference impl, mirrored in C++ by T4 |
-| `codenet_prepare.py` | CodeNet submissions → clean labeled .cpp snippets |
-| `build_dataset.py` | labeled .cpp tree → dataset.jsonl with seed-level splits |
-| `mutate.py` | seeds → label-preserving variants (week 2) |
+| CodeContests | binary_search, two_pointer, greedy_scan, sorting_based, dp, graph_traversal |
+| Hand-written seeds | brute_force_pair_search, linear_search, naive_recursion, sliding_window, heap_based, hashing (+ top-ups for binary_search, two_pointer, sorting_based) |
 
-## Seeds
+## Splits
 
-    python3 tools/build_dataset.py --src data/seeds --out data/dataset_seeds.jsonl --no-filter
+Decided once, in `build_manifest.py`: by group (contest problem or seed), so no
+problem or seed appears in two splits. Mutations of the same seed always share a
+split. `build_dataset.py` copies the split, it never re-splits.
 
-`--no-filter` because seeds are hand-written and trusted. The label rules exist
-to clean noisy CodeNet data, not to second-guess your own files.
+## Why external code is stripped
 
-## CodeNet
-
-1. Download Project CodeNet (Apache 2.0). The C++1000 benchmark is enough;
-   the full 14M-sample dataset is not needed.
-2. Read problem statements and fill `data/problem_map.json`. Budget five
-   problems per label, so about 70 statements to read.
-3. Prepare:
-
-        python3 tools/codenet_prepare.py --root /path/to/Project_CodeNet_C++1000 \
-            --layout benchmark --map data/problem_map.json \
-            --out data/prepared --limit 200
-
-   Use `--layout full` for the complete dataset, which has metadata CSVs and
-   lets the script keep only submissions with status Accepted.
-
-4. Build:
-
-        python3 tools/build_dataset.py --src data/prepared --out data/dataset_codenet.jsonl
+Contest solutions are full programs with `main`, `cin`, `cout` and input loops.
+Seeds are bare algorithm functions. If the boilerplate stayed, the model could
+learn "has I/O" instead of the algorithm. `build_dataset.py` removes includes and
+I/O statements, then any loop left with an empty body. It works per statement,
+not per line, because contest code often crams a program onto one line.
 
 ## Why the label filter exists
 
-A CodeNet problem label is not an algorithm label. Five hundred submissions to
-one "pair with given sum" problem contain brute force, hashing, and
-sort-then-two-pointer solutions. Labeling them all `hashing` poisons roughly
-40% of that class.
-
-`build_dataset.py` applies per-label rules (a `hashing` sample must use a hash
-container, a `heap_based` sample must use a priority queue) and drops anything
-that fails. Expect to lose 40-60% of submissions. That is the filter working.
-
-Once T4's complexity engine exists, add a second gate: derived complexity must
-match `expected_time` in `problem_map.json`.
+A problem tag is not an algorithm label: a problem tagged `binary search` can
+have solutions that never binary-search. `build_dataset.py` applies per-label
+rules to external samples (e.g. `sorting_based` must call `sort`,
+`binary_search` must show halving, a `mid` index, recursion or `lower_bound`)
+and drops anything that fails. Hand-written samples are trusted and skip it.
 
 ## Known limits
 
-- Boilerplate stripping is line-based and crude. The compile gate catches the
-  failures, but some legitimate submissions are lost.
-- `#define int long long` survives stripping, so type features read `long long`
-  across those files. Not fatal, just expect the distribution to look odd.
-- CFG features are currently AST-derived approximations. `cyclomatic` uses the
-  decision-point definition; T4's real CFG must use the same one or the two
-  feature extractors diverge.
+- Some features read variable names (`index_i`: i/idx/p, `index_mid`: mid).
+  The mutation rename pool excludes these names so it never fakes them.
+- Loop features read the first 40 tokens of a loop, which include the start of
+  any nested loop, so an outer loop can pick up `loop_from_i_plus_1` from its
+  inner loop. Consistent across samples, so harmless, but the C++ mirror must
+  behave the same.
+- `cyclomatic` uses the decision-point definition; T4's CFG must use the same.
+- Vector and map indexing (`a[i]` on a vector) is a call to `operator[]` in the
+  AST, not an ARRAY_SUBSCRIPT_EXPR. Both count as array access.
