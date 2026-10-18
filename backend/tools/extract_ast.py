@@ -73,6 +73,13 @@ def to_node(cursor, depth=0, max_depth=60):
         if len(kids) == 2:
             node["base_text"] = _tokens(kids[0]).strip()
             node["index_text"] = _tokens(kids[1]).strip()
+    if kind == "CALL_EXPR" and node["spelling"] == "operator[]":
+        # vector/map indexing is an overloaded operator call, not ARRAY_SUBSCRIPT_EXPR.
+        # children: [base, operator ref, index]
+        kids = list(cursor.get_children())
+        if len(kids) == 3:
+            node["base_text"] = _tokens(kids[0]).strip()
+            node["index_text"] = _tokens(kids[2]).strip()
     if kind == "CALL_EXPR" and not node["spelling"]:
         # member calls sometimes have empty spelling, pull the member name
         for ch in cursor.get_children():

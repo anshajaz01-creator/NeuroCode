@@ -97,7 +97,8 @@ def extract(ast_json, cfg_json=None):
             bump("continue_count")
         elif k == "FUNCTION_DECL":
             bump("fn_count")
-        elif k == "ARRAY_SUBSCRIPT_EXPR":
+        elif k == "ARRAY_SUBSCRIPT_EXPR" or (k == "CALL_EXPR" and sp == "operator[]"):
+            # raw arrays give ARRAY_SUBSCRIPT_EXPR; vector/map indexing is a call to operator[]
             bump("array_access_count")
             idx = node.get("index_text", "")
             base = node.get("base_text", "")
