@@ -66,6 +66,13 @@ def to_node(cursor, depth=0, max_depth=60):
         node["tokens"] = _tokens(cursor)
     if kind == "BINARY_OPERATOR" or kind == "COMPOUND_ASSIGNMENT_OPERATOR":
         node["op"] = _binary_op(cursor)
+    if kind == "UNARY_OPERATOR":
+        # libclang hides the operator; read it from the tokens (prefix or postfix)
+        toks = _tokens(cursor).split()
+        if toks and toks[0] in ("++", "--", "-", "+", "!", "~", "*", "&"):
+            node["op"] = toks[0]
+        elif toks and toks[-1] in ("++", "--"):
+            node["op"] = toks[-1]
     if kind == "IF_STMT":
         node["has_else"] = len(list(cursor.get_children())) >= 3
     if kind == "ARRAY_SUBSCRIPT_EXPR":

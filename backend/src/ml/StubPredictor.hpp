@@ -14,8 +14,8 @@ namespace nc {
 // Does NOT depend on LibTorch, so anyone can build it.
 class StubPredictor : public IPredictor {
 public:
-    // Must match tools/features.py (48) and the C++ FeatureExtractor.
-    static constexpr int kFeatureDim = 48;  // = N_FEATURES in tools/features.py
+    // Must match tools/features.py (53) and the C++ FeatureExtractor.
+    static constexpr int kFeatureDim = 53;  // = N_FEATURES in tools/features.py
 
     // Pass a fixed seed in tests for repeatable output.
     explicit StubPredictor(unsigned seed = std::random_device{}());
