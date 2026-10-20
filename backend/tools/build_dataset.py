@@ -1,6 +1,6 @@
 """
 Turn data/manifest.csv into the training dataset: one row per sample with the
-48-feature vector from features.py.
+feature vector from features.py (N_FEATURES, currently 53).
 
 Reads the split from the manifest (built by build_manifest.py), so the split is
 decided in exactly one place: by group, stratified per label.
