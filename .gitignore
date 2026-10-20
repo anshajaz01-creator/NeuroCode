@@ -4,3 +4,7 @@ __pycache__/
 .cph/
 backend/data/prepared/
 backend/models/*.pt
+backend/tools/train/build/
+backend/models/
+backend/tools/train/build/
+backend/models/
