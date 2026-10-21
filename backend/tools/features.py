@@ -1,5 +1,8 @@
 """
-NeuroCode feature vector, version 1. 48 dimensions.
+NeuroCode feature vector, version 2. 53 dimensions.
+
+v2 (before any checkpoint existed) appended 5 pointer-movement features (48-52)
+to separate two_pointer, sliding_window and brute_force_pair_search.
 
 FROZEN. The order and the length of FEATURE_NAMES must never change once a
 checkpoint exists. feature_mean and feature_std in the model sidecar are tied
@@ -8,6 +11,8 @@ to this exact ordering, so a reorder silently corrupts inference.
 T4 mirrors this file in C++ as ml/FeatureExtractor.cpp. The week-4 validation
 step is: run both on the same 20 files and diff the vectors.
 """
+
+import re
 
 FEATURE_NAMES = [
     # loop shape (0-9)
@@ -31,10 +36,13 @@ FEATURE_NAMES = [
     "index_mid", "two_index_same_array",
     # arithmetic and comparison mix (45-47)
     "add_sub_count", "mul_div_count", "compare_count",
+    # pointer movement (48-52), added in v2
+    "loop_cond_two_vars", "inc_and_dec_in_loop", "running_add_sub",
+    "index_minus_var", "inner_while_no_reset",
 ]
 
 N_FEATURES = len(FEATURE_NAMES)
-assert N_FEATURES == 48, f"expected 48 features, got {N_FEATURES}"
+assert N_FEATURES == 53, f"expected 53 features, got {N_FEATURES}"
 
 IDX = {name: i for i, name in enumerate(FEATURE_NAMES)}
 
@@ -46,7 +54,7 @@ def _walk(node, depth=0):
 
 
 def extract(ast_json, cfg_json=None):
-    """ast_json: dict from extract_ast.py. Returns a list of 48 floats."""
+    """ast_json: dict from extract_ast.py. Returns a list of N_FEATURES (53) floats."""
     v = [0.0] * N_FEATURES
 
     def bump(name, amount=1.0):
@@ -186,7 +194,146 @@ def extract(ast_json, cfg_json=None):
         + v[IDX["switch_count"]] + 1.0
     )
 
+    _pointer_features(ast_json, v)
     return v
+
+
+# ---------------------------------------------------------------- v2 features
+LOOPS = {"FOR_STMT", "WHILE_STMT", "DO_STMT", "CXX_FOR_RANGE_STMT"}
+COMPARE = {"<", ">", "<=", ">=", "==", "!="}
+SUBSCRIPT = ("ARRAY_SUBSCRIPT_EXPR",)
+
+
+def _unwrap(n):
+    """Skip implicit-cast style wrappers down to the real expression."""
+    while n.get("type") == "UNEXPOSED_EXPR" and len(n.get("children", [])) == 1:
+        n = n["children"][0]
+    return n
+
+
+def _var_name(n):
+    n = _unwrap(n)
+    return n.get("spelling") if n.get("type") == "DECL_REF_EXPR" else None
+
+
+def _is_subscript(n):
+    return n.get("type") in SUBSCRIPT or (n.get("type") == "CALL_EXPR" and n.get("spelling") == "operator[]")
+
+
+def _contains_subscript(n):
+    return any(_is_subscript(x) for x, _ in _walk(n))
+
+
+def _modified_vars(n):
+    """Variables written to anywhere inside n: x++, --x, x += .., x -= .., x = .."""
+    mod = set()
+    for x, _ in _walk(n):
+        t, op, kids = x.get("type"), x.get("op", ""), x.get("children", [])
+        if t == "UNARY_OPERATOR" and op in ("++", "--") and kids:
+            name = _var_name(kids[0])
+            if name: mod.add(name)
+        elif t in ("COMPOUND_ASSIGNMENT_OPERATOR", "BINARY_OPERATOR") and op in ("=", "+=", "-=", "*=", "/=") and kids:
+            name = _var_name(kids[0])
+            if name: mod.add(name)
+    return mod
+
+
+def _loop_condition(loop):
+    """The condition expression of a for/while/do loop, or None."""
+    kids = loop.get("children", [])
+    t = loop.get("type")
+    if t == "WHILE_STMT":
+        return kids[0] if kids else None
+    if t == "DO_STMT":
+        return kids[-1] if kids else None
+    if t == "FOR_STMT":
+        for k in kids:  # init, cond, inc, body (missing parts are omitted)
+            u = _unwrap(k)
+            if u.get("type") == "BINARY_OPERATOR" and u.get("op") in COMPARE | {"&&", "||"}:
+                return k
+    return None
+
+
+def _pointer_features(root, v):
+    two_vars = inc_dec = 0
+    adds, subs = set(), set()
+    running = 0
+    no_reset = 0
+
+    # walk with parent links
+    stack = [(root, None, 0)]
+    parent = {}
+    order = []
+    while stack:
+        n, p, loops_above = stack.pop()
+        parent[id(n)] = p
+        order.append((n, loops_above))
+        nxt = loops_above + (1 if n.get("type") in LOOPS else 0)
+        for c in reversed(n.get("children", [])):
+            stack.append((c, n, nxt))
+
+    for n, loops_above in order:
+        t, op, kids = n.get("type"), n.get("op", ""), n.get("children", [])
+
+        if t in LOOPS:
+            mod = _modified_vars(n)
+            cond = _loop_condition(n)
+            # 48: condition compares two variables that BOTH move inside the loop (l < r)
+            if cond is not None:
+                for x, _ in _walk(cond):
+                    if x.get("type") == "BINARY_OPERATOR" and x.get("op") in COMPARE and len(x.get("children", [])) == 2:
+                        a, b = (_var_name(c) for c in x["children"])
+                        if a and b and a != b and a in mod and b in mod:
+                            two_vars += 1
+                            break
+            # 49: one index incremented and a different one decremented in the same loop
+            ups, downs = set(), set()
+            for x, _ in _walk(n):
+                if x.get("type") == "UNARY_OPERATOR" and x.get("children"):
+                    name = _var_name(x["children"][0])
+                    if name and x.get("op") == "++": ups.add(name)
+                    if name and x.get("op") == "--": downs.add(name)
+            if ups and downs and (ups - downs) and (downs - ups):
+                inc_dec += 1
+            # 52: while nested in a loop whose condition variable is not reset just before it
+            if t == "WHILE_STMT" and loops_above > 0 and cond is not None:
+                cvars = {x.get("spelling") for x, _ in _walk(cond) if x.get("type") == "DECL_REF_EXPR"}
+                par = parent.get(id(n))
+                reset = False
+                if par is not None:
+                    for sib in par.get("children", []):
+                        if sib is n:
+                            break
+                        for x, _ in _walk(sib):
+                            if x.get("type") == "VAR_DECL" and x.get("spelling") in cvars:
+                                reset = True
+                if not reset:
+                    no_reset += 1
+
+        # 50: running window total: x += a[..] and x -= a[..] on the same x,
+        #     or x += a[..] - a[..] in one statement
+        if t == "COMPOUND_ASSIGNMENT_OPERATOR" and len(kids) == 2:
+            lhs, rhs = _var_name(kids[0]), kids[1]
+            if lhs and _contains_subscript(rhs):
+                if op == "+=": adds.add(lhs)
+                if op == "-=": subs.add(lhs)
+                u = _unwrap(rhs)
+                if op == "+=" and u.get("type") == "BINARY_OPERATOR" and u.get("op") == "-" \
+                        and len(u.get("children", [])) == 2 \
+                        and all(_contains_subscript(c) for c in u["children"]):
+                    running += 1
+
+        # 51: index minus a variable, e.g. a[i - k] (but not a[i - 1])
+        if _is_subscript(n):
+            idx = n.get("index_text", "")
+            if re.search(r"[A-Za-z_]\w*\s*-\s*[A-Za-z_]\w*", idx):
+                v[IDX["index_minus_var"]] += 1
+
+    running += len(adds & subs)
+    v[IDX["loop_cond_two_vars"]] = float(two_vars)
+    v[IDX["inc_and_dec_in_loop"]] = float(inc_dec)
+    v[IDX["running_add_sub"]] = float(running)
+    v[IDX["inner_while_no_reset"]] = float(no_reset)
 
 
 def _loop_ancestors(root, target):

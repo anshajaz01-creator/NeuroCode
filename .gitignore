@@ -24,3 +24,7 @@ npm-debug.log*
 .idea/
 .DS_Store
 Thumbs.db
+backend/tools/train/build/
+backend/models/
+backend/tools/train/build/
+backend/models/
