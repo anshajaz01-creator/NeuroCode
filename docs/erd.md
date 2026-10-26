@@ -133,10 +133,3 @@ erDiagram
 | analyses | counterexamples | 1 to many | Differential testing mismatches |
 | analyses | optimizations | 1 to 0..1 | Only when an optimization was found and verified |
 | models | analyses | 1 to many | By value: `analyses.model_version` stores `models.version`, so old analyses keep their record even if a model row is removed |
-
-## Open points for T3
-
-1. **`optimizations` is missing the summary.** `OptimizationSummary` in `engine/IEngine.hpp` has `headline`, `explanation`, `comparison`, `changes`, `tradeoff`, `verification` and `speedup`. None of these have a column. Simplest fix: add one `summary_json TEXT` column.
-2. **No link from a training job to the model it produced.** If the History or Training page should show "job 42 produced model v3", add `job_id INTEGER REFERENCES jobs(id)` to `models`.
-3. **`jobs ||--o| analyses` is a rule, not enforced.** The schema allows several analyses per job. Add `UNIQUE` on `analyses.job_id` if exactly one is intended.
-4. **Shortcut for week 2:** storing the whole `AnalysisResult` as one `result_json` column on `jobs` is enough to make the API work. The normalized tables above can be filled in later without changing the API.
