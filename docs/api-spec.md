@@ -534,10 +534,10 @@ type FindingType =
   | "uninitialized_use" | "inefficient_container";
 
 type AlgorithmLabel =
-  | "brute_force_pair_search" | "binary_search" | "two_pointer"
-  | "sliding_window" | "bfs" | "dfs" | "dp_1d" | "dp_2d"
-  | "greedy_scan" | "sort_based" | "hashing" | "heap_based"
-  | "linear_scan" | "prefix_sum" | "unknown";
+| "binary_search" | "brute_force_pair_search" | "dp"
+| "graph_traversal" | "greedy_scan" | "hashing
+| "heap_based" | "linear_search" | "naive_recursion"
+| "sliding_window" | "sorting_based" | "two_pointer" | "unknown";
 ```
 
 ---
