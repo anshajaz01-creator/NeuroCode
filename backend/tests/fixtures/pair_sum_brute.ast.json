@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "meta": {
+    "source_file": "pair_sum_brute.cpp",
+    "language": "cpp",
+    "std": "c++20",
+    "line_base": "user_code",
+    "main_file_only": true
+  },
+  "root": {
+    "type": "program",
+    "children": [
+      {
+        "type": "function",
+        "name": "hasPair",
+        "line": 1,
+        "end_line": 9,
+        "return_type": "bool",
+        "params": [
+          {
+            "type": "vector<int>&",
+            "name": "a"
+          },
+          {
+            "type": "int",
+            "name": "k"
+          }
+        ],
+        "recursive": false,
+        "exprs": [],
+        "children": [
+          {
+            "type": "declaration",
+            "line": 2,
+            "var_name": "n",
+            "type_name": "int",
+            "full_type": "int",
+            "container": null,
+            "init": "a.size()",
+            "exprs": [
+              {
+                "type": "call",
+                "line": 2,
+                "callee": "size",
+                "receiver": "a",
+                "args": [],
+                "is_recursive": false
+              }
+            ]
+          },
+          {
+            "type": "loop",
+            "kind": "for",
+            "line": 3,
+            "end_line": 7,
+            "init": "int i = 0",
+            "cond": "i < n",
+            "inc": "i++",
+            "exprs": [],
+            "children": [
+              {
+                "type": "loop",
+                "kind": "for",
+                "line": 4,
+                "end_line": 6,
+                "init": "int j = i + 1",
+                "cond": "j < n",
+                "inc": "j++",
+                "exprs": [],
+                "children": [
+                  {
+                    "type": "branch",
+                    "kind": "if",
+                    "line": 5,
+                    "end_line": 5,
+                    "cond": "a[i] + a[j] == k",
+                    "exprs": [
+                      {
+                        "type": "array_access",
+                        "line": 5,
+                        "base": "a",
+                        "index": "i"
+                      },
+                      {
+                        "type": "array_access",
+                        "line": 5,
+                        "base": "a",
+                        "index": "j"
+                      }
+                    ],
+                    "children": [
+                      {
+                        "type": "return",
+                        "line": 5,
+                        "value": "true",
+                        "exprs": []
+                      }
+                    ],
+                    "else_children": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "return",
+            "line": 8,
+            "value": "false",
+            "exprs": []
+          }
+        ]
+      }
+    ]
+  }
+}
