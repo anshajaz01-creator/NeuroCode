@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "labels": [
+    "binary_search",
+    "brute_force_pair_search",
+    "dp",
+    "graph_traversal",
+    "greedy_scan",
+    "hashing",
+    "heap_based",
+    "linear_search",
+    "naive_recursion",
+    "sliding_window",
+    "sorting_based",
+    "two_pointer"
+  ]
+}

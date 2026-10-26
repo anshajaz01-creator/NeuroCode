@@ -1,0 +1,10 @@
+#include <vector>
+#include <string>
+using namespace std;
+
+int findName(const vector<string>& names, const string& who) { bool flag_19 = false; (void)flag_19;
+    for (size_t k = 0; k < names.size(); ++k) {
+        if (names[k] == who) return (int)k;
+    }
+    return -1;
+}
