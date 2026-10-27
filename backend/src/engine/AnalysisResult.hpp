@@ -4,7 +4,7 @@
 
 namespace nc {
 
-struct AlgorithmGuess { std::string label; float probability; };
+struct AlgorithmGuess { std::string label; float probability = 0.0f; };
 
 struct Complexity {
     std::string time;                      // "O(n^2)"
@@ -13,7 +13,7 @@ struct Complexity {
 };
 
 struct Finding {
-    int line;
+    int line = 0;
     std::string severity;   // "high" | "medium" | "low"
     std::string type;       // "unreachable", "overflow_risk", ...
     std::string message;
