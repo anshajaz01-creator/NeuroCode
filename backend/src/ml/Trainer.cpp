@@ -107,4 +107,50 @@ void saveCheckpoint(MLP& model, const ModelInfo& info, const std::string& path_n
     std::ofstream(path_no_ext + ".json") << j.dump(2) << "\n";  // dump(2) = pretty, 2-space indent
 }
 
+CVResult crossValidate(const Dataset& ds, int k, const TrainConfig& cfg) {
+    const int C = ds.numClasses();
+    auto folds = ds.groupFolds(k, cfg.seed);
+
+    CVResult out;
+    out.pooled.confusion.assign(C, std::vector<int64_t>(C, 0));
+
+    for (int f = 0; f < k; ++f) {
+        // split rows by fold: test = f, val = next fold, train = the rest
+        std::vector<size_t> tr, va, te;
+        for (size_t i = 0; i < ds.rows().size(); ++i) {
+            if (folds[i] == f) te.push_back(i);
+            else if (folds[i] == (f + 1) % k) va.push_back(i);
+            else tr.push_back(i);
+        }
+
+        // standardize with THIS round's training rows only
+        auto st = Standardizer::fit(ds.rows(), tr, ds.numFeatures());
+        auto T = ds.tensors(tr, st), V = ds.tensors(va, st), E = ds.tensors(te, st);
+
+        MLP model(ds.numFeatures(), C);             // fresh, untrained model every round
+        auto res = train(model, T, V, C, cfg);
+        auto ev = evaluate(model, E.x, E.y, C);
+
+        for (int t = 0; t < C; ++t)
+            for (int p = 0; p < C; ++p) out.pooled.confusion[t][p] += ev.confusion[t][p];
+        out.fold_accuracy.push_back(ev.accuracy);
+        out.fold_best_epoch.push_back(res.best_epoch);
+    }
+
+    // pooled accuracy and per-class accuracy from the summed confusion matrix
+    int64_t correct = 0, total = 0;
+    out.pooled.per_class_accuracy.assign(C, -1.0);
+    out.pooled.per_class_count.assign(C, 0);
+    for (int c = 0; c < C; ++c) {
+        int64_t n = 0;
+        for (int p = 0; p < C; ++p) n += out.pooled.confusion[c][p];
+        out.pooled.per_class_count[c] = n;
+        if (n) out.pooled.per_class_accuracy[c] = double(out.pooled.confusion[c][c]) / n;
+        correct += out.pooled.confusion[c][c];
+        total += n;
+    }
+    out.accuracy = total ? double(correct) / total : 0.0;
+    out.pooled.accuracy = out.accuracy;
+    return out;
+}
 }  // namespace nc

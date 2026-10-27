@@ -3,6 +3,7 @@
 
 #include "ml/Dataset.hpp"
 #include "ml/Model.hpp"
+#include "ml/Metrics.hpp"
 
 namespace nc {
 
@@ -48,5 +49,15 @@ struct ModelInfo {
 
 // Writes <path>.pt (weights) and <path>.json (ModelInfo). They always travel together.
 void saveCheckpoint(MLP& model, const ModelInfo& info, const std::string& path_no_ext);
-                  
+
+struct CVResult {
+    double accuracy = 0;            // pooled over all test folds
+    EvalResult pooled;              // confusion matrix + per-class over all folds
+    std::vector<double> fold_accuracy;
+    std::vector<int> fold_best_epoch;
+};
+
+// Grouped k-fold: fold i is the test set, fold i+1 is for early stopping, the rest trains.
+// A fresh model and fresh standardization (fit on that round's training rows) every round.
+CVResult crossValidate(const Dataset& ds, int k, const TrainConfig& cfg);
 }  // namespace nc
