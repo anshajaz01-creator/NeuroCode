@@ -22,7 +22,10 @@ target_include_directories(nc_ml PUBLIC ${SRC})
 target_link_libraries(nc_ml PUBLIC "${TORCH_LIBRARIES}" nlohmann_json::nlohmann_json)
 
 
-foreach(t test_dataset test_standardize test_tensors test_model test_metrics test_train test_save test_predictor)
+foreach(t test_dataset test_standardize test_tensors test_model test_metrics test_train test_save test_predictor test_cv)
   add_executable(${t} ${t}.cpp)
   target_link_libraries(${t} PRIVATE nc_ml)
 endforeach()
+
+add_executable(nc_train train_main.cpp)
+target_link_libraries(nc_train PRIVATE nc_ml)
