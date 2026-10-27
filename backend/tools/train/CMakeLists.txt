@@ -15,12 +15,14 @@ add_library(nc_ml STATIC
   ${SRC}/ml/Dataset.cpp
   ${SRC}/ml/Model.cpp
   ${SRC}/ml/Metrics.cpp
-  ${SRC}/ml/Trainer.cpp)
+  ${SRC}/ml/Trainer.cpp
+  ${SRC}/ml/StubPredictor.cpp
+  ${SRC}/ml/Predictor.cpp)
 target_include_directories(nc_ml PUBLIC ${SRC})
 target_link_libraries(nc_ml PUBLIC "${TORCH_LIBRARIES}" nlohmann_json::nlohmann_json)
 
 
-foreach(t test_dataset test_standardize test_tensors test_model test_metrics test_train test_save)
+foreach(t test_dataset test_standardize test_tensors test_model test_metrics test_train test_save test_predictor)
   add_executable(${t} ${t}.cpp)
   target_link_libraries(${t} PRIVATE nc_ml)
 endforeach()
