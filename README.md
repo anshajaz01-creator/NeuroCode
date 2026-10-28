@@ -123,7 +123,6 @@ The four lanes meet at exactly three files. These are frozen in week 1 and chang
 3. `docs/api-spec.md` (T3 to T2)
 
 ---
-
 ## Getting started
 
 ### Prerequisites

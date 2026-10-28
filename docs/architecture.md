@@ -394,6 +394,7 @@ public:
 The JSON contract. T2 hand-mirrors it into `frontend/src/types/api.d.ts`. If the spec changes, both sides change the same day.
 
 ---
+See [erd.md](erd.md) for the diagram.
 
 ## 6. Data model
 

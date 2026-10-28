@@ -8,7 +8,7 @@ namespace nc
 {
 
     // FROZEN. Must match FEATURE_NAMES in tools/features.py and src/ml/features.md.
-    constexpr int kFeatureCount = 48;
+    constexpr int kFeatureCount = 53;
 
     class IPredictor
     {

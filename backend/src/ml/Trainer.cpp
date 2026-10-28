@@ -1,10 +1,13 @@
 #include "ml/Trainer.hpp"
-#include <limits>
-#include "ml/Metrics.hpp"
+
 #include <ctime>
 #include <fstream>
+#include <limits>
 
 #include <nlohmann/json.hpp>
+
+#include "ml/Metrics.hpp"
+
 namespace nc {
 
 TrainResult train(MLP& model, const SplitTensors& train_set, const SplitTensors& val_set,
@@ -12,7 +15,7 @@ TrainResult train(MLP& model, const SplitTensors& train_set, const SplitTensors&
     torch::manual_seed(cfg.seed);
     TrainResult res;
 
-    // NEW: class weights = total / (n_classes * count per class)
+    // class weights = total / (n_classes * count per class)
     torch::Tensor weights;
     if (cfg.class_weights) {
         auto counts = torch::bincount(train_set.y, {}, n_classes).to(torch::kFloat32);
@@ -24,7 +27,7 @@ TrainResult train(MLP& model, const SplitTensors& train_set, const SplitTensors&
     torch::optim::Adam optim(model->parameters(),
                              torch::optim::AdamOptions(cfg.lr).weight_decay(cfg.weight_decay));
 
-    // NEW: early stopping state
+    // early stopping state
     double best = std::numeric_limits<double>::infinity();
     int since_best = 0;
     std::vector<torch::Tensor> best_state;
@@ -61,7 +64,7 @@ TrainResult train(MLP& model, const SplitTensors& train_set, const SplitTensors&
         res.epochs_run = epoch;
         if (on_epoch) on_epoch(st);
 
-        // NEW: keep the best, stop when no improvement for `patience` epochs
+        // keep the best, stop when no improvement for `patience` epochs
         if (st.val_loss < best - 1e-5) {
             best = st.val_loss;
             res.best_epoch = epoch;
@@ -72,7 +75,7 @@ TrainResult train(MLP& model, const SplitTensors& train_set, const SplitTensors&
         }
     }
 
-    // NEW: put the best epoch's weights back into the model
+    // put the best epoch's weights back into the model
     if (!best_state.empty()) {
         torch::NoGradGuard g;
         auto params = model->parameters();
@@ -104,7 +107,54 @@ void saveCheckpoint(MLP& model, const ModelInfo& info, const std::string& path_n
     j["dataset_size"] = info.dataset_size;
     j["trained_at"] = stamp;
 
-    std::ofstream(path_no_ext + ".json") << j.dump(2) << "\n";  // dump(2) = pretty, 2-space indent
+    std::ofstream(path_no_ext + ".json") << j.dump(2) << "\n";
+}
+
+CVResult crossValidate(const Dataset& ds, int k, const TrainConfig& cfg) {
+    const int C = ds.numClasses();
+    auto folds = ds.groupFolds(k, cfg.seed);
+
+    CVResult out;
+    out.pooled.confusion.assign(C, std::vector<int64_t>(C, 0));
+
+    for (int f = 0; f < k; ++f) {
+        // split rows by fold: test = f, val = next fold, train = the rest
+        std::vector<size_t> tr, va, te;
+        for (size_t i = 0; i < ds.rows().size(); ++i) {
+            if (folds[i] == f) te.push_back(i);
+            else if (folds[i] == (f + 1) % k) va.push_back(i);
+            else tr.push_back(i);
+        }
+
+        // standardize with THIS round's training rows only
+        auto st = Standardizer::fit(ds.rows(), tr, ds.numFeatures());
+        auto T = ds.tensors(tr, st), V = ds.tensors(va, st), E = ds.tensors(te, st);
+
+        MLP model(ds.numFeatures(), C);  // fresh, untrained model every round
+        auto res = train(model, T, V, C, cfg);
+        auto ev = evaluate(model, E.x, E.y, C);
+
+        for (int t = 0; t < C; ++t)
+            for (int p = 0; p < C; ++p) out.pooled.confusion[t][p] += ev.confusion[t][p];
+        out.fold_accuracy.push_back(ev.accuracy);
+        out.fold_best_epoch.push_back(res.best_epoch);
+    }
+
+    // pooled accuracy and per-class accuracy from the summed confusion matrix
+    int64_t correct = 0, total = 0;
+    out.pooled.per_class_accuracy.assign(C, -1.0);
+    out.pooled.per_class_count.assign(C, 0);
+    for (int c = 0; c < C; ++c) {
+        int64_t n = 0;
+        for (int p = 0; p < C; ++p) n += out.pooled.confusion[c][p];
+        out.pooled.per_class_count[c] = n;
+        if (n) out.pooled.per_class_accuracy[c] = double(out.pooled.confusion[c][c]) / n;
+        correct += out.pooled.confusion[c][c];
+        total += n;
+    }
+    out.accuracy = total ? double(correct) / total : 0.0;
+    out.pooled.accuracy = out.accuracy;
+    return out;
 }
 
 }  // namespace nc

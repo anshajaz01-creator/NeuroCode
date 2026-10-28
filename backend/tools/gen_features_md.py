@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+"""
+Generate src/ml/features.md from tools/features.py, so the document can never
+drift from the code again.
+
+Run from backend/:
+  python3 tools/gen_features_md.py           # write src/ml/features.md
+  python3 tools/gen_features_md.py --check   # exit 1 if features.md is out of date
+
+Fails if FEATURE_NAMES and the descriptions below disagree, which forces whoever
+changes features.py to update this file too.
+"""
+import pathlib
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).parent))
+import features as F
+
+GROUPS = [
+    (0, 9, "Loop shape"),
+    (10, 13, "Functions and recursion"),
+    (14, 20, "Control flow"),
+    (21, 31, "Containers (declarations only)"),
+    (32, 38, "STL calls"),
+    (39, 44, "Index and access patterns"),
+    (45, 47, "Arithmetic and comparison"),
+    (48, 52, "Pointer movement (added in v2)"),
+]
+
+D = {
+    "loop_count": "`for`, `while`, `do` and range-for statements",
+    "for_count": "`FOR_STMT`",
+    "while_count": "`WHILE_STMT` and `DO_STMT`",
+    "rangefor_count": "`CXX_FOR_RANGE_STMT`",
+    "max_nest_depth": "Deepest loop nesting. A single loop is 1",
+    "loop_bound_size_call": "Loops whose first 40 tokens contain `.size()` or `size_t`",
+    "loop_bound_var": "`loop_count - loop_bound_size_call`",
+    "loop_from_i_plus_1": "Loops whose first 40 tokens (spaces removed) contain `+1`. The tokens include the start of nested loops, so an outer loop can fire too",
+    "loop_step_halving": "Loop tokens contain `/2` or `>>1`",
+    "loop_step_doubling": "Loop tokens contain `*2` or `<<1`",
+    "has_recursion": "1 if any function's name appears as a call, else 0",
+    "recursive_fn_count": "Number of functions that call themselves",
+    "self_call_count": "Number of calls to those functions",
+    "fn_count": "`FUNCTION_DECL`",
+    "if_count": "`IF_STMT`",
+    "else_count": "`if` statements with an `else` part",
+    "ternary_count": "`CONDITIONAL_OPERATOR` (`a ? b : c`)",
+    "switch_count": "`SWITCH_STMT`",
+    "break_count": "`BREAK_STMT`",
+    "continue_count": "`CONTINUE_STMT`",
+    "cyclomatic": "Decision points: `if_count + loop_count + ternary_count + switch_count + 1`. Not `edges - nodes + 2`",
+    "vector_count": "Declared type contains `vector<` but not `vector<vector<`",
+    "vector2d_count": "Declared type contains `vector<vector<`",
+    "set_count": "Type contains `set<` but not `unordered_set<`",
+    "unordered_set_count": "Type contains `unordered_set<`",
+    "map_count": "Type contains `map<` but not `unordered_map<`",
+    "unordered_map_count": "Type contains `unordered_map<`",
+    "queue_count": "Type contains `queue<` but not `priority_queue<`",
+    "stack_count": "Type contains `stack<`",
+    "priority_queue_count": "Type contains `priority_queue<`",
+    "string_count": "Type contains `string`",
+    "pair_count": "Type contains `pair<`",
+    "sort_calls": "Calls named `sort`",
+    "lower_bound_calls": "Calls named `lower_bound`",
+    "upper_bound_calls": "Calls named `upper_bound`",
+    "find_calls": "Calls named `find`",
+    "max_element_calls": "Calls named `max_element` or `min_element`",
+    "push_pop_calls": "Calls named `push`, `pop`, `push_back`, `pop_back`, `push_front` or `emplace`",
+    "count_find_member_calls": "Calls named `count` or `contains`",
+    "array_access_count": "`ARRAY_SUBSCRIPT_EXPR` (raw arrays) plus `CALL_EXPR` named `operator[]` (vector and map indexing)",
+    "index_i": "Index text is exactly `i`, `idx` or `p`",
+    "index_i_plus_1": "Index text contains `+ 1` or `+1`",
+    "index_i_minus_1": "Index text contains `- 1` or `-1`",
+    "index_mid": "Index text contains `mid` or `middle`",
+    "two_index_same_array": "Number of arrays (by base text) indexed with 2 or more different index texts",
+    "add_sub_count": "`BINARY_OPERATOR` with `+` or `-`. Compound assignments (`+=`) are a different cursor kind and are not counted",
+    "mul_div_count": "`BINARY_OPERATOR` with `*`, `/` or `%`",
+    "compare_count": "`BINARY_OPERATOR` with `<`, `>`, `<=`, `>=`, `==` or `!=`",
+    "loop_cond_two_vars": "Loops whose condition compares two different variables that are both modified inside the loop (`l < r`)",
+    "inc_and_dec_in_loop": "Loops where one variable gets `++` and a different one gets `--`",
+    "running_add_sub": "Variables that get both `x += <array access>` and `x -= <array access>`, plus statements `x += a[..] - a[..]`",
+    "index_minus_var": "Array accesses whose index is a name minus a name (`a[i - k]`, not `a[i - 1]`)",
+    "inner_while_no_reset": "`while` loops nested in another loop whose condition variables are not declared in an earlier sibling statement",
+}
+
+
+def render():
+    names = F.FEATURE_NAMES
+    missing = [n for n in names if n not in D]
+    extra = [n for n in D if n not in names]
+    if missing or extra:
+        sys.exit(f"descriptions out of sync with features.py: missing {missing}, extra {extra}")
+
+    out = [
+        "# Feature vector, version 2",
+        "",
+        "<!-- GENERATED by tools/gen_features_md.py from tools/features.py. Do not edit by hand. -->",
+        "",
+        f"**{F.N_FEATURES} dimensions. Order and length are FROZEN.** Changing either after a checkpoint",
+        "exists silently breaks inference, because `feature_mean` and `feature_std` in the model",
+        "sidecar are tied to this exact order.",
+        "",
+        "## Source of truth",
+        "",
+        "| What | Where |",
+        "| --- | --- |",
+        "| Reference implementation | `backend/tools/features.py` (reads the libclang AST from `tools/extract_ast.py`) |",
+        "| Feature count in C++ | `kFeatureCount` in `backend/src/ml/IPredictor.hpp` |",
+        "| C++ mirror (T4) | `FeatureExtractor`, plugged into the predictor with `setFeatureExtractor()` |",
+        "",
+        "The C++ extractor must read **libclang cursors directly**, the same way `extract_ast.py` does.",
+        "The simplified AST schema in `tests/fixtures/ast-cfg-schema.md` is for the UI and the",
+        "complexity engine; it does not carry everything these features need.",
+        "",
+        "**Validation rule:** Python and C++ must produce identical vectors on the same files.",
+        "",
+    ]
+
+    for lo, hi, title in GROUPS:
+        out += [f"## {lo} to {hi}: {title}", "", "| idx | name | how it is computed |", "| --- | --- | --- |"]
+        for i in range(lo, hi + 1):
+            out.append(f"| {i} | `{names[i]}` | {D[names[i]]} |")
+        out.append("")
+
+    out += [
+        "## Rules that apply to several features",
+        "",
+        "- Only cursors from the user's file are walked; system headers are skipped.",
+        "- Loop text features read the first 40 tokens of the loop statement.",
+        "- Container features count declarations only (`VAR_DECL`, `PARM_DECL`, `FIELD_DECL`), using the declared type spelling with spaces removed.",
+        "- Call features use the call's spelling; for member calls with an empty spelling, the `MEMBER_REF_EXPR` name.",
+        "- Index text is the token text of the index sub-expression, joined with single spaces.",
+        "",
+    ]
+
+    fx = pathlib.Path(__file__).parent.parent / "tests/fixtures/pair_sum_brute.cpp"
+    try:
+        from extract_ast import parse_file
+        ast, errs = parse_file(str(fx))
+        if not errs:
+            vec = F.extract(ast)
+            out += [
+                "## Reference vector: tests/fixtures/pair_sum_brute.cpp",
+                "",
+                "Non-zero features (every other index is 0):",
+                "",
+                "| idx | name | value |",
+                "| --- | --- | --- |",
+            ]
+            out += [f"| {i} | `{n}` | {v:g} |" for i, (n, v) in enumerate(zip(names, vec)) if v]
+            out += ["", "Full vector:", "", "```", "[" + ", ".join(f"{v:g}" for v in vec) + "]", "```", ""]
+    except Exception:
+        pass  # libclang not installed: skip the example section
+
+    return "\n".join(out)
+
+
+def main():
+    target = pathlib.Path(__file__).parent.parent / "src/ml/features.md"
+    text = render()
+    if "--check" in sys.argv:
+        ok = target.exists() and target.read_text() == text
+        print("features.md is up to date" if ok else "features.md is OUT OF DATE: run tools/gen_features_md.py")
+        sys.exit(0 if ok else 1)
+    target.write_text(text)
+    print(f"wrote {target} ({F.N_FEATURES} features)")
+
+
+if __name__ == "__main__":
+    main()
